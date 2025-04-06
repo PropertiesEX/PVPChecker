@@ -1,0 +1,120 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AircraftListGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local listFrame = Instance.new("Frame")
+listFrame.Name = "AircraftListFrame"
+listFrame.Size = UDim2.new(0, 200, 0, 300)
+listFrame.Position = UDim2.new(0, 10, 0.5, -150)
+listFrame.BackgroundTransparency = 0.5
+listFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+listFrame.Parent = screenGui
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = listFrame
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 5)
+padding.PaddingBottom = UDim.new(0, 5)
+padding.PaddingLeft = UDim.new(0, 5)
+padding.PaddingRight = UDim.new(0, 5)
+padding.Parent = listFrame
+
+local AircraftModels = {}
+local AircraftLabels = {}
+
+local function hasForceField(model)
+    local found = false
+    for _, child in ipairs(model:GetChildren()) do
+        if child.ClassName == "ForceField" and child.Name == "ForceField" then
+            found = true
+        end
+    end
+    return found
+end
+
+local function getPlayerNameFromModelName(model)
+    local name = model.Name:match("^(.-)Aircraft")
+    return name and name ~= "" and name or "Unknown"
+end
+
+local function updateAircraftLabel(model)
+    if not model or not model:IsDescendantOf(Workspace) then
+        if AircraftLabels[model] then
+            AircraftLabels[model]:Destroy()
+            AircraftLabels[model] = nil
+        end
+        return
+    end
+    if not string.find(model.Name, "Aircraft") then
+        return
+    end
+    local pvpStatus = hasForceField(model) and "PVP OFF" or "PVP ON"
+    local playerName = getPlayerNameFromModelName(model)
+    local pvpText = (pvpStatus == "PVP OFF") and '<font color="rgb(255,0,0)">PVP OFF</font>' or '<font color="rgb(0,255,0)">PVP ON</font>'
+    local labelText = string.format("%s - %s", playerName, pvpText)
+    if AircraftLabels[model] then
+        local label = AircraftLabels[model]
+        if label.Text ~= labelText then
+            label.Text = labelText
+        end
+    else
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 0, 20)
+        label.BackgroundTransparency = 1
+        label.RichText = true
+        label.TextScaled = true
+        label.Text = labelText
+        label.Parent = listFrame
+        AircraftLabels[model] = label
+    end
+end
+
+local function registerAircraft(model)
+    if model:IsA("Model") and string.find(model.Name, "Aircraft") then
+        AircraftModels[model] = true
+        updateAircraftLabel(model)
+    end
+end
+
+for _, model in ipairs(Workspace:GetDescendants()) do
+    if model:IsA("Model") and string.find(model.Name, "Aircraft") then
+        AircraftModels[model] = true
+        updateAircraftLabel(model)
+    end
+end
+
+Workspace.DescendantAdded:Connect(function(child)
+    if child:IsA("Model") and string.find(child.Name, "Aircraft") then
+        task.spawn(function()
+            task.wait(0.1)
+            registerAircraft(child)
+        end)
+    end
+end)
+
+Workspace.DescendantRemoving:Connect(function(child)
+    if AircraftModels[child] then
+        AircraftModels[child] = nil
+        if AircraftLabels[child] then
+            AircraftLabels[child]:Destroy()
+            AircraftLabels[child] = nil
+        end
+    end
+end)
+
+spawn(function()
+    while true do
+        for model, _ in pairs(AircraftModels) do
+            updateAircraftLabel(model)
+        end
+        wait(1)
+    end
+end)

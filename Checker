@@ -3,38 +3,12 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
 
-local checkerActive = false
-local checkerRunning = false
-local localAircraftFound = false
+local running = true
 
-local AircraftModels = {}
-local AircraftLabels = {}
-local aircraftConnections = {}
-local pendingAircraftQueue = {}
-
-local toggleGui = Instance.new("ScreenGui")
-toggleGui.Name = "ToggleGui"
-toggleGui.ResetOnSpawn = false
-toggleGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local checkerButton = Instance.new("TextButton")
-checkerButton.Name = "CheckerButton"
-checkerButton.Text = "Checker"
-checkerButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-checkerButton.TextColor3 = Color3.new(0, 0, 0)
-checkerButton.BorderColor3 = Color3.new(0, 0, 0)
-checkerButton.BorderSizePixel = 6
-checkerButton.TextScaled = true
-checkerButton.Font = Enum.Font.SourceSans
-checkerButton.Size = UDim2.new(0.0511999987, 0, 0.0320000015, 0)
-checkerButton.Position = UDim2.new(0, 1816, 0, 592)
-checkerButton.Parent = toggleGui
-
-local aircraftCheckerGui = Instance.new("ScreenGui")
-aircraftCheckerGui.Name = "AircraftListGui"
-aircraftCheckerGui.ResetOnSpawn = false
-aircraftCheckerGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-aircraftCheckerGui.Enabled = false
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AircraftListGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local listFrame = Instance.new("Frame")
 listFrame.Name = "AircraftListFrame"
@@ -42,7 +16,7 @@ listFrame.Size = UDim2.new(0, 200, 0, 300)
 listFrame.Position = UDim2.new(0, 10, 0.5, -150)
 listFrame.BackgroundTransparency = 0.8
 listFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-listFrame.Parent = aircraftCheckerGui
+listFrame.Parent = screenGui
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -55,15 +29,8 @@ padding.PaddingLeft = UDim.new(0, 5)
 padding.PaddingRight = UDim.new(0, 5)
 padding.Parent = listFrame
 
-local function updateButtonPosition(found)
-    if found then
-        checkerButton.Position = UDim2.new(0, 1816, 0, 692)
-        localAircraftFound = true
-    else
-        checkerButton.Position = UDim2.new(0, 1816, 0, 592)
-        localAircraftFound = false
-    end
-end
+local AircraftModels = {}
+local AircraftLabels = {}
 
 local function hasForceField(model)
     for _, child in ipairs(model:GetChildren()) do
@@ -87,6 +54,7 @@ local function updateAircraftLabel(model)
         end
         return
     end
+
     local playerName = getPlayerNameFromModelName(model)
     if playerName == LocalPlayer.Name or not string.find(model.Name, "Aircraft") then
         if AircraftLabels[model] then
@@ -95,7 +63,9 @@ local function updateAircraftLabel(model)
         end
         return
     end
+
     local nameColor = hasForceField(model) and Color3.new(1, 0, 0) or Color3.new(0, 1, 0)
+    
     if AircraftLabels[model] then
         if AircraftLabels[model].Text ~= playerName then
             AircraftLabels[model].Text = playerName
@@ -124,149 +94,70 @@ local function registerAircraft(model)
         AircraftModels[model] = true
         task.spawn(function()
             task.wait(3)
-            if checkerRunning then
+            if running then
                 updateAircraftLabel(model)
             end
         end)
     end
 end
 
-local function processPendingAircraft()
-    local batchSize = 2
-    for _ = 1, batchSize do
-        local model = table.remove(pendingAircraftQueue, 1)
-        if model then
-            registerAircraft(model)
-        else
-            break
-        end
-    end
-end
-
-local function checkForLocalAircraft()
-    local found = false
-    for _, model in ipairs(Workspace:GetDescendants()) do
-        if model:IsA("Model") and model.Name == LocalPlayer.Name .. " Aircraft" then
-            found = true
-            break
-        end
-    end
-    updateButtonPosition(found)
-end
-
-local function startAircraftChecker()
-    checkerActive = true
-    checkerRunning = true
-    AircraftModels = {}
-    AircraftLabels = {}
-    pendingAircraftQueue = {}
-    aircraftConnections = {}
-
-    aircraftCheckerGui.Enabled = true
-
-    for _, child in ipairs(listFrame:GetChildren()) do
-        if child ~= listLayout and child ~= padding then
-            child:Destroy()
-        end
-    end
-
-    for _, model in ipairs(Workspace:GetDescendants()) do
-        if model:IsA("Model") and string.find(model.Name, "Aircraft") then
-            local playerName = getPlayerNameFromModelName(model)
-            if model.Name == LocalPlayer.Name .. " Aircraft" then
-                updateButtonPosition(true)
-            end
-            if playerName ~= LocalPlayer.Name then
-                AircraftModels[model] = true
-                task.spawn(function()
-                    task.wait(3)
-                    if checkerRunning then
-                        updateAircraftLabel(model)
-                    end
-                end)
-            end
-        end
-    end
-
-    aircraftConnections.descendantAdded = Workspace.DescendantAdded:Connect(function(child)
-        if child:IsA("Model") and string.find(child.Name, "Aircraft") then
-            if child.Name == LocalPlayer.Name .. " Aircraft" then
-                updateButtonPosition(true)
-            elseif checkerRunning then
-                table.insert(pendingAircraftQueue, child)
-            end
-        end
-    end)
-
-    aircraftConnections.descendantRemoving = Workspace.DescendantRemoving:Connect(function(child)
-        if child:IsA("Model") and string.find(child.Name, "Aircraft") then
-            if child.Name == LocalPlayer.Name .. " Aircraft" then
-                task.spawn(function()
-                    task.wait(1)
-                    checkForLocalAircraft()
-                end)
-            end
-            if AircraftModels[child] then
-                AircraftModels[child] = nil
-                if AircraftLabels[child] then
-                    AircraftLabels[child]:Destroy()
-                    AircraftLabels[child] = nil
+for _, model in ipairs(Workspace:GetDescendants()) do
+    if model:IsA("Model") and string.find(model.Name, "Aircraft") then
+        local playerName = getPlayerNameFromModelName(model)
+        if playerName ~= LocalPlayer.Name then
+            AircraftModels[model] = true
+            task.spawn(function()
+                task.wait(3)
+                if running then
+                    updateAircraftLabel(model)
                 end
-            end
+            end)
         end
-    end)
-
-    aircraftConnections.updateLoop = task.spawn(function()
-        while checkerRunning do
-            processPendingAircraft()
-            for model in pairs(AircraftModels) do
-                updateAircraftLabel(model)
-            end
-            task.wait(2)
-        end
-    end)
-end
-
-local function stopAircraftChecker()
-    checkerActive = false
-    checkerRunning = false
-    aircraftCheckerGui.Enabled = false
-
-    for _, child in ipairs(listFrame:GetChildren()) do
-        if child ~= listLayout and child ~= padding then
-            child:Destroy()
-        end
-    end
-
-    AircraftModels = {}
-    AircraftLabels = {}
-    pendingAircraftQueue = {}
-
-    if aircraftConnections.descendantAdded then
-        aircraftConnections.descendantAdded:Disconnect()
-        aircraftConnections.descendantAdded = nil
-    end
-    if aircraftConnections.descendantRemoving then
-        aircraftConnections.descendantRemoving:Disconnect()
-        aircraftConnections.descendantRemoving = nil
-    end
-    if aircraftConnections.updateLoop then
-        aircraftConnections.updateLoop:Cancel()
-        aircraftConnections.updateLoop = nil
     end
 end
 
-checkerButton.MouseButton1Click:Connect(function()
-    if not checkerActive then
-        startAircraftChecker()
-    else
-        stopAircraftChecker()
+local descendantAddedConn = Workspace.DescendantAdded:Connect(function(child)
+    if running and child:IsA("Model") and string.find(child.Name, "Aircraft") then
+        task.spawn(function()
+            task.wait(0.1)
+            registerAircraft(child)
+        end)
     end
 end)
 
-task.spawn(function()
-    while true do
-        checkForLocalAircraft()
-        task.wait(2)
+local descendantRemovingConn = Workspace.DescendantRemoving:Connect(function(child)
+    if AircraftModels[child] then
+        AircraftModels[child] = nil
+        if AircraftLabels[child] then
+            AircraftLabels[child]:Destroy()
+            AircraftLabels[child] = nil
+        end
     end
+end)
+
+local updateLoop = task.spawn(function()
+    while running do
+        for model in pairs(AircraftModels) do
+            updateAircraftLabel(model)
+        end
+        task.wait(1)
+    end
+end)
+
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.Text = "Close"
+closeButton.TextSize = 11
+closeButton.TextColor3 = Color3.new(1, 1, 1)
+closeButton.Size = UDim2.new(1, 0, 0, 15)
+closeButton.BackgroundTransparency = 1
+closeButton.LayoutOrder = 999
+closeButton.Parent = listFrame
+
+closeButton.MouseButton1Click:Connect(function()
+    running = false
+    descendantAddedConn:Disconnect()
+    descendantRemovingConn:Disconnect()
+    screenGui:Destroy()
+    script:Destroy()
 end)
